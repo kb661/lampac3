@@ -1,56 +1,86 @@
-name: Build Lampac
+#!/usr/bin/env bash
 
-on:
-  push:
-    branches: [ main, master, dev ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:  # ручной запуск
+set -e
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+echo "Building Lampac project with all modules..."
+
+# Clean previous builds
+rm -rf ./publish ./bin ./obj
+
+# Restore and build
+dotnet restore Lampac.sln
+dotnet build Lampac.sln --configuration Release --no-restore
+
+# Publish main app
+dotnet publish Lampac/Lampac.csproj \
+  --configuration Release \
+  --output ./publish \
+  --no-build
+
+# === ВАЖНО: Копируем wwwroot (веб-интерфейс) ===
+echo "Copying wwwroot files..."
+if [ -d "Lampac/wwwroot" ]; then
+    mkdir -p ./publish/wwwroot
+    cp -r Lampac/wwwroot/* ./publish/wwwroot/
+    echo "✓ wwwroot copied"
+else
+    echo "⚠ Lampac/wwwroot not found"
+fi
+
+# === Копируем модули ===
+echo "Setting up modules..."
+mkdir -p ./publish/module/references
+
+# Copy module DLLs
+find . -name "*.dll" -path "*/bin/Release/*" \
+  -not -path "*/publish/*" \
+  -not -name "Lampac.dll" \
+  -not -name "Microsoft.*" \
+  -not -name "System.*" | while read dll; do
     
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # загружаем всю историю, нужно для версионирования
+    if [[ "$dll" == *"/module/"* ]] || [[ "$dll" == *"/Modules/"* ]]; then
+        cp "$dll" ./publish/module/ 2>/dev/null || true
+        echo "  Module: $(basename "$dll")"
+    else
+        cp "$dll" ./publish/module/references/ 2>/dev/null || true
+    fi
+done
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 9.0.x  # Lampac требует .NET 8
+# === Копируем wwwroot из модулей ===
+echo "Copying module wwwroot files..."
+if [ -d "module" ]; then
+    find module -path "*/wwwroot/*" -type f | while read file; do
+        target="./publish/${file}"
+        mkdir -p "$(dirname "$target")"
+        cp "$file" "$target"
+        echo "  UI: ${file}"
+    done
+fi
 
-    - name: Make build.sh executable
-      run: chmod +x build.sh
+# === Копируем конфиги и скрипты ===
+echo "Copying configuration files..."
+cp init.conf ./publish/ 2>/dev/null || echo "init.conf not found"
+cp init.yaml ./publish/ 2>/dev/null || echo "init.yaml not found"
+cp install.sh ./publish/ 2>/dev/null || echo "install.sh not found"
+cp update.sh ./publish/ 2>/dev/null || echo "update.sh not found"
 
-    - name: Run build script
-      run: ./build.sh
+# === Создаём README если нет ===
+echo "Creating README.txt..."
+cat > ./publish/README.txt << EOF
+Lampac - собранная версия
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: lampac-full-build
-        path: ./publish/  # ✨ ВСЯ сборка здесь
-        if-no-files-found: error
-        retention-days: 7  # хранить 7 дней
+Запуск:
+  dotnet Lampac.dll
 
-    - name: Create zip archive
-      run: |
-        cd ./publish
-        zip -r ../lampac-release.zip .
-        cd ..
+После запуска интерфейс доступен по адресу:
+  http://localhost:9118
+EOF
 
-    - name: Upload zip artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: lampac-release-zip
-        path: ./lampac-release.zip
-        retention-days: 7
-
-- name: Upload to Releases
-  uses: softprops/action-gh-release@v1
-  if: startsWith(github.ref, 'refs/tags/')
-  with:
-    files: ./publish/**/*
+echo ""
+echo "✅ Build completed successfully!"
+echo "📁 Output: ./publish"
+echo ""
+echo "📊 Statistics:"
+echo "  DLL files: $(find ./publish -name "*.dll" | wc -l)"
+echo "  JS files:  $(find ./publish -name "*.js" | wc -l)"
+echo "  CSS files: $(find ./publish -name "*.css" | wc -l)"
