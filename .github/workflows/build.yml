@@ -1,6 +1,3 @@
-set -e
-echo "Building Lampac project with all modules..."
-
 # Clean previous builds
 rm -rf ./publish ./bin ./obj
 
