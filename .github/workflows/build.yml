@@ -25,7 +25,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: lampac-full
-          path: lampac-full.zip        echo "  Module: $(basename "$dll")"
+          path: lampac-full.zip        
+          echo "  Module: $(basename "$dll")"
     else
         cp "$dll" ./publish/module/references/ 2>/dev/null || true
     fi
