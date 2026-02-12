@@ -1,40 +1,31 @@
-# Clean previous builds
-rm -rf ./publish ./bin ./obj
+name: Build Lampac
 
-# Restore and build
-dotnet restore Lampac.sln
-dotnet build Lampac.sln --configuration Release --no-restore
+on: [push, workflow_dispatch]
 
-# Publish main app
-dotnet publish Lampac/Lampac.csproj \
-  --configuration Release \
-  --output ./publish \
-  --no-build
-
-# === ВАЖНО: Копируем wwwroot (веб-интерфейс) ===
-echo "Copying wwwroot files..."
-if [ -d "Lampac/wwwroot" ]; then
-    mkdir -p ./publish/wwwroot
-    cp -r Lampac/wwwroot/* ./publish/wwwroot/
-    echo "✓ wwwroot copied"
-else
-    echo "⚠ Lampac/wwwroot not found"
-fi
-
-# === Копируем модули ===
-echo "Setting up modules..."
-mkdir -p ./publish/module/references
-
-# Copy module DLLs
-find . -name "*.dll" -path "*/bin/Release/*" \
-  -not -path "*/publish/*" \
-  -not -name "Lampac.dll" \
-  -not -name "Microsoft.*" \
-  -not -name "System.*" | while read dll; do
-    
-    if [[ "$dll" == *"/module/"* ]] || [[ "$dll" == *"/Modules/"* ]]; then
-        cp "$dll" ./publish/module/ 2>/dev/null || true
-        echo "  Module: $(basename "$dll")"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      
+      - name: Build
+        run: |
+          chmod +x build.sh
+          ./build.sh
+      
+      - name: Create release package
+        run: |
+          cd publish
+          zip -r ../lampac-full.zip .
+          cd ..
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lampac-full
+          path: lampac-full.zip        echo "  Module: $(basename "$dll")"
     else
         cp "$dll" ./publish/module/references/ 2>/dev/null || true
     fi
