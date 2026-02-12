@@ -1,3 +1,4 @@
+set -e
 echo "Building Lampac project with all modules..."
 
 # Clean previous builds
